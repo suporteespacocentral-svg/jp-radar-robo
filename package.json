@@ -1,0 +1,16 @@
+{
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "@sparticuz/chromium": "^123.0.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "puppeteer-core": "^22.15.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
