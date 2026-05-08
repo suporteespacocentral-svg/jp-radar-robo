@@ -1,8 +1,10 @@
 import express from "express";
 import cors from "cors";
 import chromium from "@sparticuz/chromium";
-import puppeteer from "puppeteer-core";
+import puppeteer from "puppeteer-extra";
+import StealthPlugin from "puppeteer-extra-plugin-stealth";
 
+puppeteer.use(StealthPlugin());
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -97,7 +99,7 @@ async function launchBrowser() {
     args: [...chromium.args, "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--disable-web-security", "--window-size=1365,900"],
     defaultViewport: { width: 1365, height: 900 },
     executablePath: await chromium.executablePath(),
-    headless: chromium.headless
+    headless: true
   });
 }
 
@@ -116,8 +118,8 @@ async function analyzeFacebookAdsLibrary(inputUrl) {
   await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36");
   await page.setExtraHTTPHeaders({ "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7" });
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 180000 });
-  await new Promise(resolve => setTimeout(resolve, 8000));
-  await autoScroll(page, 7);
+  await new Promise(resolve => setTimeout(resolve, 15000));
+  await autoScroll(page, 15);
 
   const data = await page.evaluate(() => {
     const bodyText = document.body.innerText || "";
