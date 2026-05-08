@@ -109,7 +109,32 @@ async function analyzeFacebookAdsLibrary(inputUrl) {
   await new Promise(resolve => setTimeout(resolve, 7000));
   await autoScroll(page, 5);
 
-  const data = await page.evaluate(() => {
+  const data = await page.evaluate(() => { 
+    const adCards = Array.from(document.querySelectorAll('div[role="article"]'));
+
+const ads = adCards.map((card, index) => {
+  const text = card.innerText || "";
+
+  const links = Array.from(card.querySelectorAll("a"))
+    .map(a => a.href)
+    .filter(Boolean);
+
+  const images = Array.from(card.querySelectorAll("img"))
+    .map(img => img.src)
+    .filter(Boolean);
+
+  const videos = Array.from(card.querySelectorAll("video"))
+    .map(video => video.src)
+    .filter(Boolean);
+
+  return {
+    position: index + 1,
+    text,
+    links,
+    images,
+    videos
+  };
+});
     const bodyText = document.body.innerText || "";
     const title = document.title || "";
     const allLinks = Array.from(document.querySelectorAll("a")).map(a => a.href).filter(Boolean);
