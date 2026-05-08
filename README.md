@@ -1,13 +1,15 @@
-# JP Radar Robô
+# JP Radar Robô v2.1
 
-Backend Node.js com Puppeteer para analisar links da Biblioteca de Anúncios do Facebook.
+Backend Node.js + Puppeteer para analisar links da Biblioteca de Anúncios do Facebook.
 
-## Endpoints
+## Melhorias v2.1
 
-- `/health`
-- `/analyze?url=LINK_DA_BIBLIOTECA`
-- `POST /analyze` com JSON: `{ "url": "LINK_DA_BIBLIOTECA" }`
-- `/monitor`
+- Força `active_status=active`
+- Tenta capturar quantidade de resultados ativos
+- Tenta ler cards de anúncios
+- Tenta extrair datas, copies, links externos e possíveis páginas de venda
+- Retorna score/validação inicial
+- Retorna `adsExtracted` e lista `ads`
 
 ## Render
 
@@ -23,6 +25,6 @@ Start Command:
 npm start
 ```
 
-## Observação
+## Node
 
-A Biblioteca de Anúncios do Facebook pode bloquear scraping, exigir login ou carregar dados dinamicamente. Este robô é a primeira versão funcional para teste profissional.
+Usar Node 20.x.
