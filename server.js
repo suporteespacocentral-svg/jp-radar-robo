@@ -105,7 +105,7 @@ async function analyzeFacebookAdsLibrary(inputUrl) {
   const page = await browser.newPage();
   await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36");
   await page.setExtraHTTPHeaders({ "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7" });
-  await page.goto(url, { waitUntil: "networkidle2", timeout: 90000 });
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 180000 });
   await new Promise(resolve => setTimeout(resolve, 7000));
   await autoScroll(page, 5);
 
