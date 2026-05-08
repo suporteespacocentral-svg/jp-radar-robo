@@ -1,15 +1,14 @@
-# JP Radar Robô v2.1
+# JP Radar Robô v2.2
 
 Backend Node.js + Puppeteer para analisar links da Biblioteca de Anúncios do Facebook.
 
-## Melhorias v2.1
+## Melhorias v2.2
 
-- Força `active_status=active`
-- Tenta capturar quantidade de resultados ativos
-- Tenta ler cards de anúncios
-- Tenta extrair datas, copies, links externos e possíveis páginas de venda
-- Retorna score/validação inicial
-- Retorna `adsExtracted` e lista `ads`
+- Mantém somente anúncios ativos por `active_status=active`
+- Melhora captura dos cards reais
+- Tenta extrair anunciante, ID, data, copy, CTA, imagens, vídeos, domínio e landing page
+- Gera `topCreatives` com score inicial
+- Retorna dados mais limpos para painel
 
 ## Render
 

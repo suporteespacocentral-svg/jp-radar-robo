@@ -7,7 +7,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors({ origin: "*", methods: ["GET", "POST", "OPTIONS"], allowedHeaders: ["Content-Type", "Authorization"] }));
-app.use(express.json({ limit: "5mb" }));
+app.use(express.json({ limit: "10mb" }));
 
 function todayBR() {
   return new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
@@ -34,6 +34,7 @@ function guessNiche(text = "") {
   const t = text.toLowerCase();
   const rules = [
     ["educação infantil", ["criança", "infantil", "professor", "pedagógico", "atividades", "alfabetização", "maternal", "lúdico", "escola", "aluno"]],
+    ["esporte / luta", ["jiu-jitsu", "jiu jitsu", "tatame", "faixa", "academia", "luta", "treino", "treinador"]],
     ["emagrecimento", ["emagrecer", "peso", "gordura", "dieta", "shape", "barriga", "seca", "metabolismo"]],
     ["finanças", ["dinheiro", "renda", "investimento", "pix", "cartão", "crédito", "empréstimo", "score"]],
     ["relacionamento", ["casamento", "relacionamento", "ex", "conquistar", "amor", "marido", "esposa"]],
@@ -51,16 +52,11 @@ function guessNiche(text = "") {
 function parseDateScore(value) {
   if (!value) return 0;
   const v = String(value).toLowerCase();
-  const months = {"janeiro":1,"fevereiro":2,"março":3,"marco":3,"abril":4,"maio":5,"junho":6,"julho":7,"agosto":8,"setembro":9,"outubro":10,"novembro":11,"dezembro":12};
+  const months = { "janeiro": 1, "fevereiro": 2, "março": 3, "marco": 3, "abril": 4, "maio": 5, "junho": 6, "julho": 7, "agosto": 8, "setembro": 9, "outubro": 10, "novembro": 11, "dezembro": 12 };
   let m = v.match(/(\d{1,2})\s+de\s+([a-zç]+)\s+de\s+(\d{4})/i);
-  if (m) return Number(m[3])*10000 + (months[m[2]] || 0)*100 + Number(m[1]);
+  if (m) return Number(m[3]) * 10000 + (months[m[2]] || 0) * 100 + Number(m[1]);
   m = v.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (m) return Number(m[3])*10000 + Number(m[2])*100 + Number(m[1]);
-  m = v.match(/([a-z]+)\s+(\d{1,2}),\s+(\d{4})/i);
-  if (m) {
-    const en = {january:1,february:2,march:3,april:4,may:5,june:6,july:7,august:8,september:9,october:10,november:11,december:12};
-    return Number(m[3])*10000 + (en[m[1]] || 0)*100 + Number(m[2]);
-  }
+  if (m) return Number(m[3]) * 10000 + Number(m[2]) * 100 + Number(m[1]);
   return 0;
 }
 
@@ -68,7 +64,17 @@ function uniqueArray(items) {
   return [...new Set(items.filter(Boolean))];
 }
 
-function getValidationStatus(activeCount, adsExtracted, oldestDate, newestDate) {
+function getDomain(url) {
+  try { return new URL(url).hostname.replace("www.", ""); } catch { return ""; }
+}
+
+function classifyCreativeType(ad) {
+  if ((ad.videos || []).length > 0) return "vídeo";
+  if ((ad.images || []).length > 0) return "imagem";
+  return "não identificado";
+}
+
+function getValidationStatus(activeCount, adsExtracted, oldestDate, newestDate, cleanAds = []) {
   let score = 0;
   const reasons = [];
   if (activeCount && activeCount >= 50) { score += 30; reasons.push("alto volume de resultados ativos"); }
@@ -76,10 +82,13 @@ function getValidationStatus(activeCount, adsExtracted, oldestDate, newestDate) 
   else if (activeCount && activeCount > 0) { score += 10; reasons.push("baixo volume inicial de resultados ativos"); }
   if (adsExtracted >= 10) { score += 25; reasons.push("robô conseguiu ler vários cards de anúncios"); }
   else if (adsExtracted >= 3) { score += 15; reasons.push("robô conseguiu ler alguns cards de anúncios"); }
+  const withMedia = cleanAds.filter(a => (a.images || []).length || (a.videos || []).length).length;
+  if (withMedia >= 5) { score += 15; reasons.push("vários anúncios possuem mídia/imagem/vídeo"); }
+  else if (withMedia > 0) { score += 8; reasons.push("alguns anúncios possuem mídia/imagem/vídeo"); }
   if (oldestDate && oldestDate !== "Não identificado") { score += 20; reasons.push("existe sinal de anúncio antigo/continuidade"); }
   if (newestDate && newestDate !== "Não identificado") { score += 15; reasons.push("existe sinal de anúncio recente"); }
-  if (score >= 70) return { score, status: "Oferta forte para monitorar", reasons };
-  if (score >= 40) return { score, status: "Oferta promissora, precisa acompanhar", reasons };
+  if (score >= 75) return { score, status: "Oferta forte para monitorar", reasons };
+  if (score >= 45) return { score, status: "Oferta promissora, precisa acompanhar", reasons };
   return { score, status: "Dados insuficientes, monitorar manualmente", reasons };
 }
 
@@ -92,10 +101,10 @@ async function launchBrowser() {
   });
 }
 
-async function autoScroll(page, rounds = 4) {
+async function autoScroll(page, rounds = 6) {
   for (let i = 0; i < rounds; i++) {
     await page.evaluate(() => window.scrollBy(0, window.innerHeight * 0.9));
-    await new Promise(resolve => setTimeout(resolve, 1800));
+    await new Promise(resolve => setTimeout(resolve, 1600));
   }
 }
 
@@ -103,100 +112,155 @@ async function analyzeFacebookAdsLibrary(inputUrl) {
   const url = forceActiveAdsUrl(inputUrl);
   const browser = await launchBrowser();
   const page = await browser.newPage();
+
   await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36");
   await page.setExtraHTTPHeaders({ "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7" });
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 180000 });
-  await new Promise(resolve => setTimeout(resolve, 7000));
-  await autoScroll(page, 5);
+  await new Promise(resolve => setTimeout(resolve, 8000));
+  await autoScroll(page, 7);
 
-  const data = await page.evaluate(() => { 
-    const adCards = Array.from(document.querySelectorAll('div[role="article"]'));
-
-const ads = adCards.map((card, index) => {
-  const text = card.innerText || "";
-
-  const links = Array.from(card.querySelectorAll("a"))
-    .map(a => a.href)
-    .filter(Boolean);
-
-  const images = Array.from(card.querySelectorAll("img"))
-    .map(img => img.src)
-    .filter(Boolean);
-
-  const videos = Array.from(card.querySelectorAll("video"))
-    .map(video => video.src)
-    .filter(Boolean);
-
-  return {
-    position: index + 1,
-    text,
-    links,
-    images,
-    videos
-  };
-});
+  const data = await page.evaluate(() => {
     const bodyText = document.body.innerText || "";
     const title = document.title || "";
+
     const allLinks = Array.from(document.querySelectorAll("a")).map(a => a.href).filter(Boolean);
     const externalLinks = allLinks.filter(h => !h.includes("facebook.com") && !h.includes("fbcdn.net") && !h.includes("instagram.com") && !h.includes("whatsapp.com") && !h.includes("metastatus.com") && /^https?:\/\//.test(h));
-    const activeMatches = [...bodyText.matchAll(/([\d.,]+)\s+(resultados|results)/gi), ...bodyText.matchAll(/([\d.,]+)\s+(anúncios ativos|active ads|ads)/gi)];
+
+    const activeMatches = [
+      ...bodyText.matchAll(/~?\s*([\d.,]+)\s+(resultados|results)/gi),
+      ...bodyText.matchAll(/([\d.,]+)\s+(anúncios ativos|active ads|ads)/gi)
+    ];
     const activeRaw = activeMatches.length ? activeMatches[0][1] : "";
-    const dateMatches = Array.from(bodyText.matchAll(/(\d{1,2}\s+de\s+[a-zç]+\s+de\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{4}|[A-Z][a-z]+\s+\d{1,2},\s+\d{4})/g)).map(m => m[1]);
+
+    const dateMatches = Array.from(bodyText.matchAll(/(\d{1,2}\s+de\s+[a-zç]+\s+de\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{4})/g)).map(m => m[1]);
     const lines = bodyText.split("\n").map(x => x.trim()).filter(Boolean);
+
     let pageName = "";
     const sponsoredIndex = lines.findIndex(l => l.toLowerCase() === "patrocinado" || l.toLowerCase() === "sponsored");
     if (sponsoredIndex > 0) pageName = lines[Math.max(0, sponsoredIndex - 1)];
 
-    const cards = Array.from(document.querySelectorAll("div")).map(el => {
-      const text = (el.innerText || "").trim();
+    const cards = Array.from(document.querySelectorAll("div")).map((el, index) => {
+      const text = el.innerText || "";
       if (!text) return null;
       const lower = text.toLowerCase();
-      const looksLikeAd = lower.includes("biblioteca de anúncios") || lower.includes("id da biblioteca") || lower.includes("patrocinado") || lower.includes("sponsored") || lower.includes("ativo") || lower.includes("active");
-      if (!looksLikeAd || text.length < 80 || text.length > 3500) return null;
-      const cardLinks = Array.from(el.querySelectorAll("a")).map(a => a.href).filter(Boolean);
-      const outgoing = cardLinks.filter(h => !h.includes("facebook.com") && !h.includes("fbcdn.net") && !h.includes("instagram.com") && !h.includes("whatsapp.com") && !h.includes("metastatus.com") && /^https?:\/\//.test(h));
-      const dates = Array.from(text.matchAll(/(\d{1,2}\s+de\s+[a-zç]+\s+de\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{4}|[A-Z][a-z]+\s+\d{1,2},\s+\d{4})/g)).map(m => m[1]);
-      const libraryId = (text.match(/ID da biblioteca[:\s]+([0-9]+)/i) || text.match(/Library ID[:\s]+([0-9]+)/i) || [])[1] || "";
-      return { libraryId, text: text.slice(0, 1200), dates, outgoingLinks: [...new Set(outgoing)].slice(0, 5) };
+
+      const looksLikeAd = lower.includes("patrocinado") && (
+        lower.includes("identificação da biblioteca") ||
+        lower.includes("veiculação iniciada") ||
+        lower.includes("saiba mais") ||
+        lower.includes("open in new tab")
+      );
+
+      if (!looksLikeAd) return null;
+      if (text.length < 180 || text.length > 5000) return null;
+
+      const links = Array.from(el.querySelectorAll("a")).map(a => a.href).filter(Boolean);
+      const images = Array.from(el.querySelectorAll("img")).map(img => img.src).filter(Boolean);
+      const videos = Array.from(el.querySelectorAll("video")).map(video => video.src || video.currentSrc).filter(Boolean);
+
+      const libraryIdMatch = text.match(/Identificação da biblioteca:\s*([0-9]+)/i) || text.match(/Library ID[:\s]+([0-9]+)/i);
+      const startedMatch = text.match(/Veiculação iniciada em\s*([^\n]+)/i) || text.match(/Started running on\s*([^\n]+)/i);
+      const activeAdsMatch = text.match(/([0-9]+)\s+anúncios/i) || text.match(/([0-9]+)\s+ads/i);
+      const ctaMatch = text.match(/\b(Saiba mais|Comprar agora|Inscrever-se|Baixar|Enviar mensagem|Learn more|Shop now|Sign up|Download)\b/i);
+
+      const externalLinks = links.filter(h => !h.includes("facebook.com") && !h.includes("fbcdn.net") && !h.includes("instagram.com") && !h.includes("whatsapp.com") && !h.includes("metastatus.com") && /^https?:\/\//.test(h));
+
+      const cardLines = text.split("\n").map(t => t.trim()).filter(Boolean);
+      let advertiser = "";
+      let copyPreview = "";
+      const patrocinadoIndex = cardLines.findIndex(l => l.toLowerCase() === "patrocinado" || l.toLowerCase() === "sponsored");
+
+      if (patrocinadoIndex > 0) advertiser = cardLines[patrocinadoIndex - 1] || "";
+
+      const blockedWords = ["ativo", "save to storage", "shows: n/a", "open in new tab", "download media", "copy link", "identificação da biblioteca", "veiculação iniciada", "plataformas", "ver detalhes do anúncio", "ver resumo", "patrocinado"];
+      const afterSponsored = cardLines.slice(Math.max(0, patrocinadoIndex + 1));
+      const copyLines = afterSponsored.filter(line => {
+        const l = line.toLowerCase();
+        if (blockedWords.some(w => l.includes(w))) return false;
+        if (/^\d+\s+anúncios/.test(l)) return false;
+        if (/^https?:\/\//.test(l)) return false;
+        if (line.length < 8) return false;
+        return true;
+      });
+      copyPreview = copyLines.slice(0, 6).join(" ");
+
+      return {
+        position: index + 1,
+        advertiser,
+        libraryId: libraryIdMatch?.[1] || null,
+        startedAt: startedMatch?.[1] || null,
+        activeAds: activeAdsMatch?.[1] ? Number(activeAdsMatch[1]) : null,
+        cta: ctaMatch?.[1] || null,
+        copyPreview,
+        images: [...new Set(images)].slice(0, 12),
+        videos: [...new Set(videos)].slice(0, 6),
+        externalLinks: [...new Set(externalLinks)].slice(0, 8),
+        rawText: text.slice(0, 3000)
+      };
     }).filter(Boolean);
 
     const dedup = [];
     const seen = new Set();
     for (const c of cards) {
-      const key = c.libraryId || c.text.slice(0, 180);
+      const key = c.libraryId || `${c.advertiser}-${c.copyPreview.slice(0, 120)}-${c.startedAt || ""}`;
       if (!seen.has(key)) {
         seen.add(key);
         dedup.push(c);
       }
-      if (dedup.length >= 25) break;
+      if (dedup.length >= 40) break;
     }
-    return { title, textSample: bodyText.slice(0, 5000), activeRaw, dates: [...new Set(dateMatches)].slice(0, 60), externalLinks: [...new Set(externalLinks)].slice(0, 30), pageName, cards: dedup };
+
+    return { title, textSample: bodyText.slice(0, 6000), activeRaw, dates: [...new Set(dateMatches)].slice(0, 80), externalLinks: [...new Set(externalLinks)].slice(0, 50), pageName, cards: dedup };
   });
 
   await browser.close();
 
-  const textForNiche = `${data.title} ${data.textSample} ${data.cards.map(c => c.text).join(" ")}`;
   const activeCount = data.activeRaw ? parseInt(data.activeRaw.replace(/[^\d]/g, ""), 10) : null;
-  const allDates = uniqueArray([...data.dates, ...data.cards.flatMap(c => c.dates || [])]);
+
+  const adCards = data.cards.map((c, index) => {
+    const type = classifyCreativeType(c);
+    const domains = uniqueArray((c.externalLinks || []).map(getDomain)).filter(Boolean);
+    return {
+      position: index + 1,
+      advertiser: c.advertiser || data.pageName || null,
+      libraryId: c.libraryId || null,
+      startedAt: c.startedAt || null,
+      activeAds: c.activeAds || null,
+      cta: c.cta || null,
+      creativeType: type,
+      copyPreview: c.copyPreview || "",
+      domains,
+      landingPages: c.externalLinks || [],
+      images: c.images || [],
+      videos: c.videos || [],
+      rawText: c.rawText || ""
+    };
+  });
+
+  const textForNiche = `${data.title} ${data.textSample} ${adCards.map(c => c.copyPreview).join(" ")}`;
+  const allDates = uniqueArray([...data.dates, ...adCards.map(c => c.startedAt).filter(Boolean)]);
   const sortedDates = allDates.map(d => ({ raw: d, score: parseDateScore(d) })).filter(d => d.score > 0).sort((a, b) => a.score - b.score);
   const oldestAdDate = sortedDates.length ? sortedDates[0].raw : "Não identificado";
   const newestAdDate = sortedDates.length ? sortedDates[sortedDates.length - 1].raw : "Não identificado";
-  const salesPageCandidates = uniqueArray([...data.externalLinks, ...data.cards.flatMap(c => c.outgoingLinks || [])]).slice(0, 30);
 
-  const adCards = data.cards.map((c, index) => ({
-    position: index + 1,
-    libraryId: c.libraryId || null,
-    dates: c.dates || [],
-    outgoingLinks: c.outgoingLinks || [],
-    copyPreview: c.text.replace(/\s+/g, " ").slice(0, 600)
-  }));
+  const salesPageCandidates = uniqueArray([...data.externalLinks, ...adCards.flatMap(c => c.landingPages || [])]).slice(0, 50);
+  const validation = getValidationStatus(activeCount, adCards.length, oldestAdDate, newestAdDate, adCards);
 
-  const validation = getValidationStatus(activeCount, adCards.length, oldestAdDate, newestAdDate);
+  const topCreatives = [...adCards].map(ad => {
+    let score = 0;
+    const reasons = [];
+    if (ad.activeAds && ad.activeAds >= 5) { score += 30; reasons.push("criativo usado em vários anúncios"); }
+    if (ad.startedAt) { score += 20; reasons.push("possui data de início"); }
+    if (ad.copyPreview && ad.copyPreview.length > 60) { score += 20; reasons.push("copy identificada"); }
+    if ((ad.images || []).length || (ad.videos || []).length) { score += 20; reasons.push("mídia capturada"); }
+    if ((ad.landingPages || []).length) { score += 10; reasons.push("link externo detectado"); }
+    return { ...ad, creativeScore: score, scoreReasons: reasons };
+  }).sort((a, b) => b.creativeScore - a.creativeScore).slice(0, 10);
 
   return {
     ok: true,
     source: "facebook_ads_library",
-    version: "2.1.0",
+    version: "2.2.0",
     activeOnly: true,
     analyzedAt: new Date().toISOString(),
     foundDate: todayBR(),
@@ -209,21 +273,22 @@ const ads = adCards.map((card, index) => {
     newestAdDate,
     salesPageCandidates,
     validation,
+    topCreatives,
     ads: adCards,
     raw: {
       title: data.title,
       datesFound: allDates,
-      note: "Versão 2.1: força active_status=active, tenta ler cards, datas, copies e links externos. A Meta pode bloquear, exigir login/captcha ou esconder dados em JavaScript."
+      note: "Versão 2.2: captura cards reais por patrocinado + identificação da biblioteca + veiculação iniciada, tenta extrair copy, mídia, CTA, domínio e landing pages."
     }
   };
 }
 
 app.get("/", (req, res) => {
-  res.json({ status: "online", service: "JP Radar Robô", version: "2.1.0", endpoints: ["/health", "/analyze", "/monitor"], activeOnly: true });
+  res.json({ status: "online", service: "JP Radar Robô", version: "2.2.0", endpoints: ["/health", "/analyze", "/monitor"], activeOnly: true });
 });
 
 app.get("/health", (req, res) => {
-  res.json({ ok: true, message: "Robô online", version: "2.1.0", date: new Date().toISOString() });
+  res.json({ ok: true, message: "Robô online", version: "2.2.0", date: new Date().toISOString() });
 });
 
 app.post("/analyze", async (req, res) => {
@@ -251,9 +316,9 @@ app.get("/analyze", async (req, res) => {
 });
 
 app.get("/monitor", async (req, res) => {
-  res.json({ ok: true, version: "2.1.0", message: "Endpoint de monitoramento ativo. Próximo passo: conectar banco de dados/Supabase e rodar lista diária de ofertas.", activeOnly: true, date: new Date().toISOString() });
+  res.json({ ok: true, version: "2.2.0", message: "Endpoint de monitoramento ativo. Próximo passo: conectar banco de dados/Supabase e rodar lista diária de ofertas.", activeOnly: true, date: new Date().toISOString() });
 });
 
 app.listen(PORT, () => {
-  console.log(`JP Radar Robô v2.1 rodando na porta ${PORT}`);
+  console.log(`JP Radar Robô v2.2 rodando na porta ${PORT}`);
 });
